@@ -181,7 +181,7 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
               <div className="w-full bg-[#121226] border-2 border-neon-cyan/50 rounded-2xl p-2.5 shadow-2xl flex flex-col items-center">
                 <div className="relative w-full max-w-[270px] aspect-square rounded-xl overflow-hidden bg-black flex items-center justify-center border border-gray-700">
                   <img
-                    src="/fampay-qr-scanner.png"
+                    src="./fampay-qr-scanner.png"
                     alt="Official FamPay Scanner for Rashmi Ranjan pati"
                     className="w-full h-full object-contain p-1 rounded-xl"
                   />
