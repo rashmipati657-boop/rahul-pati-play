@@ -247,12 +247,33 @@ export const SHOP_ITEMS = [
   },
 ];
 
-export function generateUpiUrl(amountInr) {
+// Official NPCI P2P & App-Specific Deep Links for PhonePe, Google Pay, FamPay, Paytm, Razorpay
+export function generateUpiUrl(amountInr, gameTitle = 'Retro Arcade') {
   const cleanId = 'rashmipati@fam';
   const cleanName = encodeURIComponent('Rashmi Ranjan pati');
-  // Official NPCI P2P UPI format compatible with all UPI apps without merchant parameter errors
-  if (amountInr) {
-    return `upi://pay?pa=${cleanId}&pn=${cleanName}&am=${Number(amountInr).toFixed(2)}&cu=INR`;
-  }
-  return `upi://pay?pa=${cleanId}&pn=${cleanName}&cu=INR`;
+  const cleanNote = encodeURIComponent((gameTitle || 'Retro Arcade').replace(/[^a-zA-Z0-9 ]/g, ' ').trim().slice(0, 20));
+  const txnRef = `RPP${Date.now().toString().slice(-8)}`;
+  const formattedAmount = Number(amountInr || 2).toFixed(2);
+
+  // Full NPCI compliant query string with tr and tn to prevent "request type not supported" errors
+  return `upi://pay?pa=${cleanId}&pn=${cleanName}&am=${formattedAmount}&cu=INR&tn=${cleanNote}&tr=${txnRef}&mode=02&purpose=00`;
+}
+
+// Dedicated App Launchers for PhonePe, Google Pay, FamPay, Paytm, and Razorpay
+export function getAppUpiUrls(amountInr, gameTitle = 'Retro Arcade') {
+  const cleanId = 'rashmipati@fam';
+  const cleanName = encodeURIComponent('Rashmi Ranjan pati');
+  const cleanNote = encodeURIComponent((gameTitle || 'Retro Arcade').replace(/[^a-zA-Z0-9 ]/g, ' ').trim().slice(0, 20));
+  const txnRef = `RPP${Date.now().toString().slice(-8)}`;
+  const formattedAmount = Number(amountInr || 2).toFixed(2);
+  const baseParams = `pa=${cleanId}&pn=${cleanName}&am=${formattedAmount}&cu=INR&tn=${cleanNote}&tr=${txnRef}`;
+
+  return {
+    phonepe: `phonepe://pay?${baseParams}`,
+    gpay: `gpay://upi/pay?${baseParams}`,
+    fampay: `fampay://pay?${baseParams}`,
+    paytm: `paytmmp://pay?${baseParams}`,
+    razorpay: `upi://pay?${baseParams}&mc=0000`,
+    universal: `upi://pay?${baseParams}&mode=02&purpose=00`,
+  };
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { generateUpiUrl } from '../config/fampayConfig';
+import { generateUpiUrl, getAppUpiUrls } from '../config/fampayConfig';
 import { recordTransaction } from '../utils/database';
 import { validateUtr, registerUtr, logSecurityEvent } from '../utils/security';
 import { sounds } from '../utils/audio';
@@ -11,6 +11,7 @@ export default function WalletModal({ tokens, onClose, onRechargeSuccess, onUnlo
   const [showQr, setShowQr] = useState(false);
   const [utrNumber, setUtrNumber] = useState('');
   const [payerName, setPayerName] = useState('');
+  const [selectedApp, setSelectedApp] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const packs = [
@@ -19,7 +20,19 @@ export default function WalletModal({ tokens, onClose, onRechargeSuccess, onUnlo
     { amount: 49, tokens: 100, label: '🔥 VIP All-Access Pass (Unlock All Games)', isVip: true },
   ];
 
-  const upiUrl = generateUpiUrl(selectedPack.amount);
+  const handleAppPay = (appName) => {
+    sounds.playCoin();
+    setSelectedApp(appName);
+    const urls = getAppUpiUrls(selectedPack.amount, selectedPack.label);
+    const targetUrl = urls[appName] || urls.universal;
+
+    try {
+      window.location.href = targetUrl;
+    } catch (err) {
+      console.warn('App launch error', err);
+      window.location.href = urls.universal;
+    }
+  };
 
   const handleFinish = () => {
     setErrorMsg('');
@@ -52,7 +65,7 @@ export default function WalletModal({ tokens, onClose, onRechargeSuccess, onUnlo
       selectedPack.amount,
       validation.cleanUtr,
       finalName,
-      'FamPay UPI',
+      `${selectedApp || 'FamPay'} UPI`,
       'Wallet Checkout'
     );
 
@@ -134,7 +147,7 @@ export default function WalletModal({ tokens, onClose, onRechargeSuccess, onUnlo
                   <span className="text-xs font-arcade text-white block">Rashmi Ranjan pati</span>
                   <span className="text-xs font-mono text-neon-cyan font-bold block">rashmipati@fam</span>
                   <span className="text-[10px] text-gray-400 flex items-center justify-center gap-1 mt-1">
-                    <QrCode size={12} /> Scan with FamPay, GPay, PhonePe or Paytm
+                    <QrCode size={12} /> Scan with PhonePe, Google Pay, FamPay or Paytm
                   </span>
                 </div>
               </div>
@@ -144,14 +157,49 @@ export default function WalletModal({ tokens, onClose, onRechargeSuccess, onUnlo
                 <span className="font-arcade text-neon-yellow text-base">₹{selectedPack.amount}</span>
               </div>
 
-              <a
-                href={upiUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-2.5 bg-neon-green text-black font-arcade text-xs font-bold rounded-xl flex items-center justify-center gap-2 mb-3 shadow-neon-green"
+              {/* 5 App Launchers */}
+              <div className="w-full grid grid-cols-2 gap-2 mb-2">
+                <button
+                  onClick={() => handleAppPay('phonepe')}
+                  className="p-2 bg-[#5f259f]/25 hover:bg-[#5f259f]/40 border border-[#5f259f]/70 rounded-xl flex items-center gap-2 text-left"
+                >
+                  <div className="w-6 h-6 rounded bg-[#5f259f] text-white flex items-center justify-center text-xs font-bold">पे</div>
+                  <span className="text-xs font-bold text-white">PhonePe</span>
+                </button>
+                <button
+                  onClick={() => handleAppPay('gpay')}
+                  className="p-2 bg-[#1a73e8]/20 hover:bg-[#1a73e8]/35 border border-[#1a73e8]/70 rounded-xl flex items-center gap-2 text-left"
+                >
+                  <div className="w-6 h-6 rounded bg-white text-[#1a73e8] flex items-center justify-center text-xs font-bold">G</div>
+                  <span className="text-xs font-bold text-white">Google Pay</span>
+                </button>
+                <button
+                  onClick={() => handleAppPay('fampay')}
+                  className="p-2 bg-[#ffe600]/20 hover:bg-[#ffe600]/35 border border-[#ffe600]/70 rounded-xl flex items-center gap-2 text-left"
+                >
+                  <div className="w-6 h-6 rounded bg-[#ffe600] text-black flex items-center justify-center text-[10px] font-bold font-arcade">fam</div>
+                  <span className="text-xs font-bold text-neon-yellow">FamPay</span>
+                </button>
+                <button
+                  onClick={() => handleAppPay('paytm')}
+                  className="p-2 bg-[#00b9f5]/20 hover:bg-[#00b9f5]/35 border border-[#00b9f5]/70 rounded-xl flex items-center gap-2 text-left"
+                >
+                  <div className="w-6 h-6 rounded bg-[#002970] text-[#00b9f5] flex items-center justify-center text-[10px] font-bold">Pay</div>
+                  <span className="text-xs font-bold text-white">Paytm</span>
+                </button>
+              </div>
+
+              {/* Razorpay button */}
+              <button
+                onClick={() => handleAppPay('razorpay')}
+                className="w-full p-2 bg-[#0c2340]/60 hover:bg-[#0c2340]/90 border border-[#0284c7]/60 rounded-xl flex items-center justify-between mb-3"
               >
-                <Smartphone size={15} /> 1-TAP PAY ON MOBILE
-              </a>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">⚡</span>
+                  <span className="text-xs font-bold text-white">Razorpay / All UPI Apps</span>
+                </div>
+                <span className="text-[10px] bg-[#0284c7]/30 text-sky-200 px-2 py-0.5 rounded font-mono">Pay ₹{selectedPack.amount}</span>
+              </button>
 
               {/* 12-digit UTR verification */}
               <div className="w-full bg-[#0e0e22] p-3 rounded-xl border border-gray-700 text-left space-y-2 mb-3">

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { generateUpiUrl } from '../config/fampayConfig';
+import { generateUpiUrl, getAppUpiUrls } from '../config/fampayConfig';
 import { recordTransaction, isGameUnlocked, unlockGamePermanently } from '../utils/database';
 import { validateUtr, registerUtr, generateSignedTicket, logSecurityEvent } from '../utils/security';
 import { sounds } from '../utils/audio';
 import confetti from 'canvas-confetti';
-import { X, QrCode, Smartphone, CheckCircle, ShieldCheck, Copy, Check, Sparkles, AlertCircle, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { X, QrCode, Smartphone, CheckCircle, ShieldCheck, Copy, Check, Sparkles, AlertCircle, ShieldAlert, ArrowLeft, ExternalLink } from 'lucide-react';
 
 export default function PaymentModal({ game, onClose, onSuccess }) {
   const [utrNumber, setUtrNumber] = useState('');
@@ -12,6 +12,7 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
   const [payerContact, setPayerContact] = useState('');
   const [step, setStep] = useState('PAY'); // PAY, SUCCESS
   const [hasClickedPay, setHasClickedPay] = useState(false);
+  const [selectedApp, setSelectedApp] = useState('');
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -41,9 +42,6 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
     }
   }, [game.id, game.title]);
 
-  // Standard NPCI P2P link with verified bank name
-  const upiUrl = generateUpiUrl(amountInr);
-
   const copyUpiId = () => {
     navigator.clipboard.writeText('rashmipati@fam');
     setCopied(true);
@@ -51,16 +49,37 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Safe App-Specific Direct Launcher (Eliminates "Request type not supported" error)
+  const handleAppPay = (appName) => {
+    sounds.playCoin();
+    setSelectedApp(appName);
+    setHasClickedPay(true);
+    setErrorMsg('');
+
+    const urls = getAppUpiUrls(amountInr, game.title);
+    const targetUrl = urls[appName] || urls.universal;
+
+    // Fix for "Request type is not supported":
+    // Never use target="_blank". In mobile browsers (Android Chrome / iOS Safari),
+    // same-window navigation forwards the genuine user activation token to the target app.
+    try {
+      window.location.href = targetUrl;
+    } catch (err) {
+      console.warn('Direct app launcher fallback to universal UPI', err);
+      window.location.href = urls.universal;
+    }
+  };
+
   const handleConfirmPayment = () => {
     setErrorMsg('');
     const finalUtr = utrNumber.trim().replace(/\D/g, '');
     const finalPayerName = payerName.trim();
-    const finalPayerContact = payerContact.trim() || 'FamPay / UPI App';
+    const finalPayerContact = payerContact.trim() || `${selectedApp || 'UPI'} App`;
     const deviceInfo = detectDevice();
 
     // STRICT ANTI-BYPASS CHECK 1: UTR cannot be empty
     if (!finalUtr) {
-      setErrorMsg('❌ 12-Digit UTR Required: Please enter the 12-digit UPI Reference Number from your FamPay receipt to unlock.');
+      setErrorMsg('❌ 12-Digit UTR Required: Please enter the 12-digit UPI Reference Number from your payment receipt to unlock.');
       sounds.playHit();
       return;
     }
@@ -158,7 +177,7 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
             <div>
               <h3 className="font-arcade text-xs text-white">UNLOCK: {game.title}</h3>
               <p className="text-[11px] text-neon-green font-mono flex items-center gap-1">
-                <ShieldCheck size={12} /> Official FamPay Verified Payment
+                <ShieldCheck size={12} /> Official UPI & FamPay Payouts
               </p>
             </div>
           </div>
@@ -191,7 +210,7 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
                 </div>
               </div>
 
-              {/* EXACT OFFICIAL FAMPAY SCANNER IMAGE */}
+              {/* EXACT OFFICIAL FAMPAY / UPI SCANNER IMAGE */}
               <div className="w-full bg-[#121226] border-2 border-neon-cyan/50 rounded-2xl p-2.5 shadow-2xl flex flex-col items-center">
                 <div className="relative w-full max-w-[270px] aspect-square rounded-xl overflow-hidden bg-black flex items-center justify-center border border-gray-700">
                   <img
@@ -209,7 +228,7 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
                     rashmipati@fam
                   </span>
                   <span className="text-[10px] text-gray-400 flex items-center justify-center gap-1 mt-1">
-                    <QrCode size={12} /> Scan with FamPay, GPay, PhonePe or Paytm
+                    <QrCode size={12} /> Scan with PhonePe, Google Pay, FamPay or Paytm
                   </span>
                 </div>
               </div>
@@ -231,30 +250,106 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
                 </button>
               </div>
 
-              {/* Pay Action Buttons (Step 1) */}
+              {/* Step 1: Specific App Launchers (PhonePe, Google Pay, FamPay, Paytm, Razorpay) */}
               {!hasClickedPay ? (
                 <div className="w-full mt-3 flex flex-col gap-2">
-                  <a
-                    href={upiUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => {
-                      sounds.playCoin();
-                      setHasClickedPay(true);
-                    }}
-                    className="w-full py-3.5 bg-neon-green text-black font-arcade text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-neon-green hover:brightness-110 active:scale-98 transition-all"
-                  >
-                    <Smartphone size={16} /> 1-TAP PAY ₹{amountInr} ON FAMPAY / UPI APP
-                  </a>
+                  <div className="text-left mb-1 pt-1 border-t border-gray-800">
+                    <span className="text-[11px] font-arcade text-white flex items-center gap-1.5">
+                      <Smartphone size={13} className="text-neon-cyan" /> 1-TAP PAY WITH YOUR APP:
+                    </span>
+                    <p className="text-[10px] text-gray-400">
+                      Tap your app to pay ₹{amountInr} directly, or scan the QR code above:
+                    </p>
+                  </div>
 
+                  {/* 4 Primary UPI Apps Grid */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* 1. PhonePe */}
+                    <button
+                      onClick={() => handleAppPay('phonepe')}
+                      className="p-2.5 bg-[#5f259f]/25 hover:bg-[#5f259f]/40 border border-[#5f259f]/70 hover:border-[#a855f7] rounded-xl flex items-center gap-2.5 transition-all text-left active:scale-98 shadow-sm"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-[#5f259f] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow">
+                        पे
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-white block leading-tight">PhonePe</span>
+                        <span className="text-[9px] text-purple-300">1-Tap Direct</span>
+                      </div>
+                    </button>
+
+                    {/* 2. Google Pay */}
+                    <button
+                      onClick={() => handleAppPay('gpay')}
+                      className="p-2.5 bg-[#1a73e8]/20 hover:bg-[#1a73e8]/35 border border-[#1a73e8]/70 hover:border-[#60a5fa] rounded-xl flex items-center gap-2.5 transition-all text-left active:scale-98 shadow-sm"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-white text-[#1a73e8] flex items-center justify-center font-black text-xs shrink-0 shadow">
+                        G
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-white block leading-tight">Google Pay</span>
+                        <span className="text-[9px] text-blue-300">GPay UPI</span>
+                      </div>
+                    </button>
+
+                    {/* 3. FamPay */}
+                    <button
+                      onClick={() => handleAppPay('fampay')}
+                      className="p-2.5 bg-[#ffe600]/20 hover:bg-[#ffe600]/35 border border-[#ffe600]/70 hover:border-[#fde047] rounded-xl flex items-center gap-2.5 transition-all text-left active:scale-98 shadow-sm"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-[#ffe600] text-black flex items-center justify-center font-black text-[11px] shrink-0 shadow font-arcade">
+                        fam
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-neon-yellow block leading-tight">FamPay</span>
+                        <span className="text-[9px] text-yellow-200">Official App</span>
+                      </div>
+                    </button>
+
+                    {/* 4. Paytm */}
+                    <button
+                      onClick={() => handleAppPay('paytm')}
+                      className="p-2.5 bg-[#00b9f5]/20 hover:bg-[#00b9f5]/35 border border-[#00b9f5]/70 hover:border-[#38bdf8] rounded-xl flex items-center gap-2.5 transition-all text-left active:scale-98 shadow-sm"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-[#002970] text-[#00b9f5] flex items-center justify-center font-black text-[11px] shrink-0 shadow">
+                        Pay
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-white block leading-tight">Paytm</span>
+                        <span className="text-[9px] text-cyan-300">Instant UPI</span>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* 5. Razorpay & Universal NPCI UPI */}
+                  <button
+                    onClick={() => handleAppPay('razorpay')}
+                    className="w-full p-2.5 bg-[#0c2340]/60 hover:bg-[#0c2340]/90 border border-[#0284c7]/60 hover:border-[#38bdf8] rounded-xl flex items-center justify-between transition-all active:scale-98 shadow-sm"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-[#0284c7] text-white flex items-center justify-center font-black text-sm shrink-0 shadow">
+                        ⚡
+                      </div>
+                      <div className="text-left">
+                        <span className="text-xs font-bold text-white block leading-tight">Razorpay / All UPI Apps</span>
+                        <span className="text-[9px] text-sky-300">Universal NPCI Gateway</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-[#0284c7]/30 text-sky-200 border border-[#0284c7]/40 px-2.5 py-1 rounded-lg font-mono font-bold">
+                      Pay ₹{amountInr}
+                    </span>
+                  </button>
+
+                  {/* Manual QR Scan Button */}
                   <button
                     onClick={() => {
                       sounds.playClick();
+                      setSelectedApp('QR Scanner');
                       setHasClickedPay(true);
                     }}
-                    className="w-full py-2 bg-gray-800/80 hover:bg-gray-800 border border-gray-700 text-gray-300 text-[11px] font-arcade rounded-xl flex items-center justify-center gap-1.5 transition-all"
+                    className="w-full py-2 bg-gray-800/80 hover:bg-gray-800 border border-gray-700 text-gray-300 text-[11px] font-arcade rounded-xl flex items-center justify-center gap-1.5 transition-all mt-1"
                   >
-                    <QrCode size={13} className="text-neon-cyan" /> I AM SCANNING QR CODE TO PAY
+                    <QrCode size={13} className="text-neon-cyan" /> I SCANNED QR CODE TO PAY
                   </button>
                 </div>
               ) : (
@@ -265,7 +360,7 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
                       <ShieldAlert size={15} /> STEP 2: VERIFY YOUR ₹{amountInr} PAYMENT
                     </div>
                     <p className="text-[11px] text-gray-300 leading-relaxed">
-                      Completed your ₹{amountInr} payment to <strong className="text-neon-green font-mono">rashmipati@fam</strong>? 
+                      Completed ₹{amountInr} in <strong className="text-neon-cyan font-bold">{selectedApp || 'your UPI app'}</strong> to <strong className="text-neon-green font-mono">rashmipati@fam</strong>? 
                       Enter your receipt's <strong className="text-neon-yellow">12-digit UPI Reference No. (UTR)</strong> below to verify and unlock:
                     </p>
                   </div>
@@ -298,7 +393,7 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
                         autoFocus
                       />
                       <p className="text-[10px] text-gray-400 mt-1.5 leading-tight">
-                        💡 <strong>Where to find:</strong> Open your UPI / FamPay receipt &gt; copy the 12-digit <strong>UPI Ref No. / UTR</strong> (e.g. 432109876543).
+                        💡 <strong>Where to find:</strong> Open PhonePe, Google Pay, FamPay, or Paytm &gt; tap your payment to <strong>Rashmi Ranjan pati</strong> &gt; copy the 12-digit <strong>UPI Ref No. / UTR</strong>.
                       </p>
                     </div>
 
@@ -356,7 +451,7 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
                     }}
                     className="text-gray-400 hover:text-neon-cyan text-xs underline py-1 flex items-center justify-center gap-1 transition-colors"
                   >
-                    <ArrowLeft size={13} /> Back to QR Code & Pay Options
+                    <ArrowLeft size={13} /> Back to App Selection & QR Code
                   </button>
                 </div>
               )}
