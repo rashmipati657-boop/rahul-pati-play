@@ -4,18 +4,18 @@ import { recordTransaction, isGameUnlocked, unlockGamePermanently } from '../uti
 import { validateUtr, registerUtr, generateSignedTicket, logSecurityEvent } from '../utils/security';
 import { sounds } from '../utils/audio';
 import confetti from 'canvas-confetti';
-import { X, QrCode, Smartphone, CheckCircle, ShieldCheck, Copy, Check, Sparkles, AlertCircle, ShieldAlert } from 'lucide-react';
+import { X, QrCode, Smartphone, CheckCircle, ShieldCheck, Copy, Check, Sparkles, AlertCircle, ShieldAlert, ArrowLeft } from 'lucide-react';
 
 export default function PaymentModal({ game, onClose, onSuccess }) {
   const [utrNumber, setUtrNumber] = useState('');
   const [payerName, setPayerName] = useState('');
   const [payerContact, setPayerContact] = useState('');
-  const [step, setStep] = useState('PAY'); // PAY, VERIFY, SUCCESS
+  const [step, setStep] = useState('PAY'); // PAY, SUCCESS
   const [hasClickedPay, setHasClickedPay] = useState(false);
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const amountInr = game.priceInr || 10;
+  const amountInr = game.priceInr || 2;
   const amountUsd = game.priceUsd || (amountInr / 83.5).toFixed(2);
 
   const detectDevice = () => {
@@ -52,56 +52,68 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
   };
 
   const handleConfirmPayment = () => {
-    let finalUtr = utrNumber.trim();
-    const finalPayerName = payerName.trim() || 'Verified Payer';
-    const finalPayerContact = payerContact.trim() || 'UPI App';
+    setErrorMsg('');
+    const finalUtr = utrNumber.trim().replace(/\D/g, '');
+    const finalPayerName = payerName.trim();
+    const finalPayerContact = payerContact.trim() || 'FamPay / UPI App';
     const deviceInfo = detectDevice();
 
+    // STRICT ANTI-BYPASS CHECK 1: UTR cannot be empty
     if (!finalUtr) {
-      // Auto-generate confirmed UPI reference if player leaves it blank
-      finalUtr = `UPI_CONFIRMED_${Date.now().toString().slice(-8)}`;
-      registerUtr(finalUtr, game.title, amountInr);
-      logSecurityEvent('PAYMENT_VERIFIED', {
-        utr: finalUtr,
-        game: game.title,
-        amount: amountInr,
-        payer: `${finalPayerName} (${finalPayerContact})`,
-        device: deviceInfo,
-      });
-    } else {
-      // Mandatory Security Validation: Validate 12-digit UTR if entered
-      const validation = validateUtr(finalUtr);
-      if (!validation.valid) {
-        setErrorMsg(validation.reason);
-        sounds.playHit();
-        logSecurityEvent(validation.duplicate ? 'DUPLICATE_UTR' : 'LEAKAGE_BLOCKED', {
-          utr: finalUtr,
-          game: game.title,
-          amount: amountInr,
-          reason: validation.reason,
-        });
-        return;
-      }
-      finalUtr = validation.cleanUtr;
-      // Register in Anti-Duplicate ledger
-      registerUtr(finalUtr, game.title, amountInr);
-      logSecurityEvent('PAYMENT_VERIFIED', {
-        utr: finalUtr,
-        game: game.title,
-        amount: amountInr,
-        payer: `${finalPayerName} (${finalPayerContact})`,
-        device: deviceInfo,
-      });
+      setErrorMsg('❌ 12-Digit UTR Required: Please enter the 12-digit UPI Reference Number from your FamPay receipt to unlock.');
+      sounds.playHit();
+      return;
     }
 
-    // Immediately and permanently unlock across all storage layers
+    // STRICT ANTI-BYPASS CHECK 2: UTR must be exactly 12 digits
+    if (finalUtr.length !== 12) {
+      setErrorMsg(`❌ Incomplete UTR: You entered ${finalUtr.length} digits. A genuine UPI Reference Number is exactly 12 digits.`);
+      sounds.playHit();
+      return;
+    }
+
+    // STRICT ANTI-BYPASS CHECK 3: Payer name is mandatory for audit trail
+    if (!finalPayerName) {
+      setErrorMsg('❌ Payer Name Required: Please enter your name so the owner (Rashmi Ranjan pati) can verify your payment.');
+      sounds.playHit();
+      return;
+    }
+
+    // STRICT ANTI-BYPASS CHECK 4: Validate genuine NPCI UTR and block duplicates/dummies
+    const validation = validateUtr(finalUtr);
+    if (!validation.valid) {
+      setErrorMsg(`❌ ${validation.reason}`);
+      sounds.playHit();
+      logSecurityEvent(validation.duplicate ? 'DUPLICATE_UTR' : 'LEAKAGE_BLOCKED', {
+        utr: finalUtr,
+        game: game.title,
+        amount: amountInr,
+        payer: finalPayerName,
+        reason: validation.reason,
+      });
+      return;
+    }
+
+    const cleanUtr = validation.cleanUtr;
+
+    // Register in Anti-Duplicate ledger to prevent reuse
+    registerUtr(cleanUtr, game.title, amountInr);
+    logSecurityEvent('PAYMENT_VERIFIED', {
+      utr: cleanUtr,
+      game: game.title,
+      amount: amountInr,
+      payer: `${finalPayerName} (${finalPayerContact})`,
+      device: deviceInfo,
+    });
+
+    // Permanently unlock game across all storage layers
     unlockGamePermanently(game.id, game.title);
-    generateSignedTicket(game.id, finalUtr);
+    generateSignedTicket(game.id, cleanUtr);
     recordTransaction(
       game.id,
       game.title,
       amountInr,
-      finalUtr,
+      cleanUtr,
       finalPayerName,
       finalPayerContact,
       deviceInfo
@@ -116,64 +128,66 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
           gameId: game.id,
           gameTitle: game.title,
           amountInr,
-          utrNumber: finalUtr,
+          utrNumber: cleanUtr,
           payerName: finalPayerName,
           payerContact: finalPayerContact,
           clientTime: new Date().toISOString(),
           device: deviceInfo,
         }),
-      }).catch((e) => console.log('Offline/local mode fallback', e));
+      }).catch((e) => console.log('Offline/cloud mode fallback', e));
     } catch (e) {
       console.error(e);
     }
 
     setStep('SUCCESS');
     sounds.playWin();
-    confetti({ particleCount: 70, spread: 70 });
+    confetti({ particleCount: 80, spread: 70 });
 
     setTimeout(() => {
       onSuccess(game.id, amountInr);
-    }, 1000);
+    }, 1200);
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="arcade-box w-full max-w-md rounded-2xl overflow-hidden border-2 border-neon-cyan shadow-neon-cyan relative animate-in fade-in zoom-in duration-200">
         {/* Modal Header */}
-        <div className="bg-[#15152e] p-3.5 border-b border-gray-800 flex items-center justify-between">
+        <div className="bg-[#14142d] p-4 border-b border-gray-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">{game.icon}</span>
+            <span className="text-2xl">{game.icon || '🕹️'}</span>
             <div>
               <h3 className="font-arcade text-xs text-white">UNLOCK: {game.title}</h3>
-              <p className="text-[11px] text-neon-green">Official FamPay Verified Payment</p>
+              <p className="text-[11px] text-neon-green font-mono flex items-center gap-1">
+                <ShieldCheck size={12} /> Official FamPay Verified Payment
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white"
+            className="p-1 rounded-lg bg-gray-800 text-gray-400 hover:text-white transition-colors"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-5 max-h-[85vh] overflow-y-auto">
+        <div className="p-5 max-h-[85vh] overflow-y-auto">
           {step === 'PAY' && (
-            <div className="flex flex-col items-center">
-              {/* Pricing Banner */}
-              <div className="w-full bg-[#0d0d20] border border-neon-green/30 rounded-xl p-3 mb-3 flex items-center justify-between">
+            <div className="flex flex-col items-center text-center">
+              {/* Fee Showcase */}
+              <div className="w-full bg-[#0c0c1e] border border-gray-800 rounded-xl p-3 mb-3 flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] text-gray-400 block">Game Entry Fee:</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-arcade text-xl text-neon-green">₹{amountInr}</span>
+                  <span className="text-[10px] text-gray-400 block font-arcade">Game Entry Fee:</span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="font-arcade text-xl text-neon-green font-bold">₹{amountInr}</span>
                     <span className="text-xs text-gray-400">(${amountUsd} USD)</span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] bg-neon-green/20 text-neon-green px-2 py-0.5 rounded font-arcade">
+                  <span className="text-[10px] bg-neon-green/20 text-neon-green border border-neon-green/40 px-2 py-0.5 rounded-full font-mono uppercase font-bold">
                     VERIFIED
                   </span>
-                  <span className="text-[11px] text-gray-400 block mt-1">Rashmi Ranjan pati</span>
+                  <span className="text-[11px] text-gray-300 block mt-1 font-medium">Rashmi Ranjan pati</span>
                 </div>
               </div>
 
@@ -217,7 +231,7 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
                 </button>
               </div>
 
-              {/* Pay Action Buttons (Pay First) */}
+              {/* Pay Action Buttons (Step 1) */}
               {!hasClickedPay ? (
                 <div className="w-full mt-3 flex flex-col gap-2">
                   <a
@@ -244,114 +258,108 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
                   </button>
                 </div>
               ) : (
-                /* Unlocking Option: Visible ONLY AFTER user clicks the pay option */
-                <div className="w-full mt-4 pt-4 border-t border-neon-green/30 animate-in fade-in duration-300 flex flex-col gap-2.5">
-                  <div className="bg-neon-green/10 border border-neon-green/40 p-3 rounded-xl text-left">
-                    <div className="flex items-center gap-2 text-neon-green font-arcade text-xs mb-1">
-                      <CheckCircle size={15} /> PAYMENT INITIATED IN FAMPAY / UPI
+                /* Step 2: MANDATORY 12-DIGIT UTR PAYMENT VERIFICATION */
+                <div className="w-full mt-4 pt-4 border-t-2 border-neon-cyan/40 animate-in fade-in duration-300 flex flex-col gap-3">
+                  <div className="bg-[#12122b] border border-neon-cyan/50 p-3 rounded-xl text-left">
+                    <div className="flex items-center gap-2 text-neon-cyan font-arcade text-xs mb-1">
+                      <ShieldAlert size={15} /> STEP 2: VERIFY YOUR ₹{amountInr} PAYMENT
                     </div>
-                    <p className="text-[11px] text-gray-300">
-                      Completed the ₹{amountInr} payment to <strong className="text-neon-cyan font-mono">rashmipati@fam</strong>? Enter your name/UPI so the owner can match your payment:
+                    <p className="text-[11px] text-gray-300 leading-relaxed">
+                      Completed your ₹{amountInr} payment to <strong className="text-neon-green font-mono">rashmipati@fam</strong>? 
+                      Enter your receipt's <strong className="text-neon-yellow">12-digit UPI Reference No. (UTR)</strong> below to verify and unlock:
                     </p>
                   </div>
 
-                  {/* Payer Verification Form */}
-                  <div className="bg-[#12122b] p-3 rounded-xl border border-gray-700/80 text-left space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
+                  {/* Mandatory 12-digit UTR Input */}
+                  <div className="bg-[#0e0e22] p-3 rounded-xl border border-gray-700 text-left space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-arcade text-neon-yellow flex items-center gap-1.5">
+                          <ShieldCheck size={14} className="text-neon-yellow" />
+                          12-Digit UPI Reference No. / UTR * (Mandatory)
+                        </label>
+                        <span className="text-[11px] font-mono text-neon-cyan font-bold">
+                          {utrNumber.length}/12
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={12}
+                        placeholder="Enter 12-digit UTR (e.g. 432109876543)"
+                        value={utrNumber}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, '').slice(0, 12);
+                          setUtrNumber(digits);
+                          setErrorMsg('');
+                        }}
+                        className="w-full bg-[#070714] border-2 border-neon-cyan/60 focus:border-neon-green rounded-xl p-3 text-sm text-center text-white font-mono tracking-widest outline-none shadow-inner transition-all"
+                        autoFocus
+                      />
+                      <p className="text-[10px] text-gray-400 mt-1.5 leading-tight">
+                        💡 <strong>Where to find:</strong> Open your UPI / FamPay receipt &gt; copy the 12-digit <strong>UPI Ref No. / UTR</strong> (e.g. 432109876543).
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-800">
                       <div>
-                        <label className="text-[10px] text-gray-400 block mb-1">Your Name (Optional):</label>
+                        <label className="text-[10px] text-gray-300 block mb-1">Your Name * (Mandatory):</label>
                         <input
                           type="text"
                           placeholder="e.g. Amit / Rohan"
                           value={payerName}
-                          onChange={(e) => setPayerName(e.target.value)}
-                          className="w-full bg-[#0a0a18] border border-gray-700 rounded-lg p-2 text-xs text-white outline-none focus:border-neon-cyan font-sans"
+                          onChange={(e) => {
+                            setPayerName(e.target.value);
+                            setErrorMsg('');
+                          }}
+                          className="w-full bg-[#070714] border border-gray-700 focus:border-neon-cyan rounded-lg p-2 text-xs text-white outline-none"
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-gray-400 block mb-1">Mobile / UPI ID (Optional):</label>
+                        <label className="text-[10px] text-gray-300 block mb-1">Mobile / UPI ID (Optional):</label>
                         <input
                           type="text"
                           placeholder="e.g. 9876543210"
                           value={payerContact}
                           onChange={(e) => setPayerContact(e.target.value)}
-                          className="w-full bg-[#0a0a18] border border-gray-700 rounded-lg p-2 text-xs text-white outline-none focus:border-neon-cyan font-mono"
+                          className="w-full bg-[#070714] border border-gray-700 focus:border-neon-cyan rounded-lg p-2 text-xs text-white outline-none font-mono"
                         />
                       </div>
                     </div>
                   </div>
 
+                  {/* Error Box */}
+                  {errorMsg && (
+                    <div className="p-3 bg-red-950/90 border border-red-500 rounded-xl text-left flex items-start gap-2 shadow-lg">
+                      <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-red-200 font-medium leading-relaxed">{errorMsg}</p>
+                    </div>
+                  )}
+
+                  {/* Strictly Protected Verify Button */}
                   <button
                     onClick={handleConfirmPayment}
-                    className="w-full py-3.5 bg-neon-green text-black hover:bg-neon-green/90 text-xs font-arcade font-bold rounded-xl flex items-center justify-center gap-2 shadow-neon-green hover:brightness-110 active:scale-98 transition-all"
+                    className={`w-full py-3.5 font-arcade text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all ${
+                      utrNumber.length === 12 && payerName.trim()
+                        ? 'bg-neon-green text-black hover:bg-neon-green/90 shadow-neon-green hover:brightness-110 active:scale-98 animate-pulse'
+                        : 'bg-gray-800 text-gray-300 hover:text-white border border-gray-700 hover:border-gray-600'
+                    }`}
                   >
-                    <CheckCircle size={16} /> I HAVE PAID ₹{amountInr} — UNLOCK & PLAY NOW
+                    <ShieldCheck size={16} /> VERIFY 12-DIGIT UTR & UNLOCK GAME
                   </button>
 
-                  <div className="flex items-center justify-between text-xs px-1">
-                    <button
-                      onClick={() => setStep('VERIFY')}
-                      className="text-gray-400 hover:text-neon-cyan underline text-[11px]"
-                    >
-                      Enter 12-Digit UTR Receipt (Optional)
-                    </button>
-                    <button
-                      onClick={() => setHasClickedPay(false)}
-                      className="text-gray-500 hover:text-gray-300 text-[11px]"
-                    >
-                      Cancel / Pay Again
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => {
+                      setHasClickedPay(false);
+                      setErrorMsg('');
+                    }}
+                    className="text-gray-400 hover:text-neon-cyan text-xs underline py-1 flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <ArrowLeft size={13} /> Back to QR Code & Pay Options
+                  </button>
                 </div>
               )}
-            </div>
-          )}
-
-          {step === 'VERIFY' && (
-            <div className="flex flex-col items-center text-center">
-              <div className="w-12 h-12 rounded-full bg-neon-green/20 border-2 border-neon-green flex items-center justify-center text-neon-green mb-3">
-                <ShieldCheck size={28} />
-              </div>
-              <h4 className="font-arcade text-sm text-white mb-1">CONFIRM YOUR PAYMENT</h4>
-              <p className="text-xs text-gray-400 mb-4">
-                Paid <span className="text-neon-green font-bold">₹{amountInr}</span> to{' '}
-                <span className="text-white font-mono">rashmipati@fam</span>.
-              </p>
-
-              <div className="w-full text-left mb-4">
-                <label className="text-xs text-gray-300 block mb-1">
-                  12-Digit UPI Reference Number / UTR (Optional):
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. 432109876543"
-                  value={utrNumber}
-                  onChange={(e) => {
-                    setUtrNumber(e.target.value);
-                    setErrorMsg('');
-                  }}
-                  className="w-full bg-[#0e0e1e] border border-gray-700 rounded-lg p-2.5 text-sm text-white font-mono focus:border-neon-cyan outline-none"
-                />
-                {errorMsg && <p className="text-red-400 text-xs mt-1">{errorMsg}</p>}
-                <p className="text-[11px] text-gray-500 mt-1">
-                  Found in your FamPay / UPI payment receipt.
-                </p>
-              </div>
-
-              <div className="w-full flex gap-3">
-                <button
-                  onClick={() => setStep('PAY')}
-                  className="flex-1 py-2.5 bg-gray-800 text-gray-300 rounded-xl text-xs font-arcade hover:bg-gray-700"
-                >
-                  BACK
-                </button>
-                <button
-                  onClick={handleConfirmPayment}
-                  className="flex-1 py-2.5 bg-neon-green text-black font-arcade text-xs font-bold rounded-xl shadow-neon-green hover:brightness-110"
-                >
-                  UNLOCK GAME NOW
-                </button>
-              </div>
             </div>
           )}
 
@@ -360,9 +368,12 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
               <div className="w-16 h-16 rounded-full bg-neon-green text-black flex items-center justify-center mb-4 animate-bounce">
                 <CheckCircle size={36} />
               </div>
-              <h3 className="font-arcade text-lg text-neon-green mb-2">PAYMENT RECEIVED!</h3>
+              <h3 className="font-arcade text-lg text-neon-green mb-2">PAYMENT VERIFIED!</h3>
               <p className="text-sm text-gray-300 mb-1">
-                ₹{amountInr} transferred to Rashmi Ranjan pati (rashmipati@fam).
+                ₹{amountInr} received for <strong className="text-white">{game.title}</strong>.
+              </p>
+              <p className="text-xs text-gray-400 font-mono mb-2">
+                UTR: {utrNumber} • Verified by Rashmi Ranjan pati
               </p>
               <p className="text-xs text-neon-cyan font-arcade animate-pulse">
                 LAUNCHING {game.title.toUpperCase()}...

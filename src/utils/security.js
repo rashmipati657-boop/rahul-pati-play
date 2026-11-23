@@ -8,25 +8,34 @@ const SECURITY_LOGS_KEY = 'rpp_security_audit_logs';
 // Validate Indian 12-digit NPCI UPI Reference Number (UTR)
 export function validateUtr(utr) {
   if (!utr || typeof utr !== 'string') {
-    return { valid: false, reason: 'UTR is required for payment verification.' };
+    return { valid: false, reason: '12-digit UPI Reference Number (UTR) is required to verify genuine payment.' };
   }
-  const clean = utr.trim();
+  const clean = utr.trim().replace(/\s+/g, '');
   // Valid NPCI UTR is exactly 12 numeric digits
   if (!/^\d{12}$/.test(clean)) {
-    return { valid: false, reason: 'UTR must be exactly 12 numeric digits (found on your payment receipt).' };
+    return { valid: false, reason: 'UTR must be exactly 12 numeric digits from your FamPay payment receipt.' };
   }
-  // Check for common fake dummy numbers like 000000000000 or 123456789012
-  const dummyNumbers = ['000000000000', '111111111111', '123456789012', '999999999999', '123412341234'];
+  // Check if all digits are identical (e.g. 000000000000, 111111111111, 777777777777, 999999999999)
+  if (/^(.)\1{11}$/.test(clean)) {
+    return { valid: false, reason: 'Suspicious repetitive UTR detected. Please enter the genuine 12-digit reference from your FamPay receipt.' };
+  }
+  // Check common sequential or dummy test numbers
+  const dummyNumbers = [
+    '123456789012', '012345678901', '987654321098',
+    '123412341234', '112233445566', '121212121212',
+    '111222333444', '000111222333'
+  ];
   if (dummyNumbers.includes(clean)) {
-    return { valid: false, reason: 'Suspicious or dummy UTR detected. Please enter the genuine 12-digit reference from your UPI receipt.' };
+    return { valid: false, reason: 'Test/Dummy UTR detected. Please enter the genuine 12-digit reference from your FamPay receipt.' };
   }
 
   // Check anti-leakage duplicate database
   const usedUtrs = getUsedUtrs();
   if (usedUtrs[clean]) {
+    const prevDate = new Date(usedUtrs[clean].timestamp).toLocaleDateString();
     return {
       valid: false,
-      reason: `This UTR (${clean}) was already redeemed on ${new Date(usedUtrs[clean].timestamp).toLocaleString()}. Re-using payment receipts is blocked to prevent financial leakage.`,
+      reason: `This UTR (${clean}) was already redeemed on ${prevDate}. Reusing payment receipts is blocked. Each ₹2 payment can only unlock once.`,
       duplicate: true,
     };
   }

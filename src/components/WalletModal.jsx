@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { generateUpiUrl } from '../config/fampayConfig';
 import { recordTransaction } from '../utils/database';
+import { validateUtr, registerUtr, logSecurityEvent } from '../utils/security';
 import { sounds } from '../utils/audio';
 import confetti from 'canvas-confetti';
-import { X, Coins, Smartphone, CheckCircle, QrCode } from 'lucide-react';
+import { X, Coins, Smartphone, CheckCircle, QrCode, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export default function WalletModal({ tokens, onClose, onRechargeSuccess, onUnlockAllSuccess }) {
   const [selectedPack, setSelectedPack] = useState({ amount: 49, tokens: 100, label: 'VIP Pass (Unlock All 10 Games)', isVip: true });
   const [showQr, setShowQr] = useState(false);
+  const [utrNumber, setUtrNumber] = useState('');
+  const [payerName, setPayerName] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const packs = [
     { amount: 20, tokens: 20, label: 'Starter Pack (20 Tokens)', isVip: false },
@@ -17,8 +21,41 @@ export default function WalletModal({ tokens, onClose, onRechargeSuccess, onUnlo
 
   const upiUrl = generateUpiUrl(selectedPack.amount);
 
-  const handleFinish = (isDemo = false) => {
-    recordTransaction(selectedPack.label, selectedPack.amount);
+  const handleFinish = () => {
+    setErrorMsg('');
+    const finalUtr = utrNumber.trim().replace(/\D/g, '');
+    const finalName = payerName.trim() || 'Wallet Customer';
+
+    if (!finalUtr) {
+      setErrorMsg('❌ 12-Digit UTR Required: Enter the 12-digit reference from your FamPay receipt.');
+      sounds.playHit();
+      return;
+    }
+
+    if (finalUtr.length !== 12) {
+      setErrorMsg(`❌ Incomplete UTR: You entered ${finalUtr.length} digits. Exactly 12 digits required.`);
+      sounds.playHit();
+      return;
+    }
+
+    const validation = validateUtr(finalUtr);
+    if (!validation.valid) {
+      setErrorMsg(`❌ ${validation.reason}`);
+      sounds.playHit();
+      return;
+    }
+
+    registerUtr(validation.cleanUtr, selectedPack.label, selectedPack.amount);
+    recordTransaction(
+      selectedPack.label,
+      selectedPack.label,
+      selectedPack.amount,
+      validation.cleanUtr,
+      finalName,
+      'FamPay UPI',
+      'Wallet Checkout'
+    );
+
     sounds.playWin();
     confetti({ particleCount: 80, spread: 70 });
 
@@ -111,23 +148,60 @@ export default function WalletModal({ tokens, onClose, onRechargeSuccess, onUnlo
                 href={upiUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-2.5 bg-neon-green text-black font-arcade text-xs font-bold rounded-xl flex items-center justify-center gap-2 mb-2"
+                className="w-full py-2.5 bg-neon-green text-black font-arcade text-xs font-bold rounded-xl flex items-center justify-center gap-2 mb-3 shadow-neon-green"
               >
                 <Smartphone size={15} /> 1-TAP PAY ON MOBILE
               </a>
 
+              {/* 12-digit UTR verification */}
+              <div className="w-full bg-[#0e0e22] p-3 rounded-xl border border-gray-700 text-left space-y-2 mb-3">
+                <label className="text-xs font-arcade text-neon-yellow block">
+                  Enter 12-Digit UTR From Receipt *:
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={12}
+                  placeholder="e.g. 432109876543"
+                  value={utrNumber}
+                  onChange={(e) => {
+                    setUtrNumber(e.target.value.replace(/\D/g, '').slice(0, 12));
+                    setErrorMsg('');
+                  }}
+                  className="w-full bg-[#070714] border border-gray-700 focus:border-neon-yellow rounded-lg p-2 text-sm text-center text-white font-mono tracking-widest outline-none"
+                />
+
+                <input
+                  type="text"
+                  placeholder="Your Name (Optional)"
+                  value={payerName}
+                  onChange={(e) => setPayerName(e.target.value)}
+                  className="w-full bg-[#070714] border border-gray-700 rounded-lg p-2 text-xs text-white outline-none"
+                />
+              </div>
+
+              {errorMsg && (
+                <div className="w-full p-2.5 bg-red-950/80 border border-red-500 rounded-xl text-left flex items-start gap-2 mb-3">
+                  <AlertCircle size={15} className="text-red-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-200">{errorMsg}</p>
+                </div>
+              )}
+
               <button
-                onClick={() => handleFinish(false)}
-                className="w-full py-2.5 bg-neon-yellow/20 border border-neon-yellow text-neon-yellow font-arcade text-xs rounded-xl flex items-center justify-center gap-1.5"
+                onClick={handleFinish}
+                className="w-full py-3 bg-neon-yellow text-black font-arcade text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-neon-yellow hover:brightness-110 active:scale-98 transition-all"
               >
-                <CheckCircle size={15} /> PAYMENT COMPLETED
+                <ShieldCheck size={16} /> VERIFY UTR & UNLOCK
               </button>
 
               <button
-                onClick={() => handleFinish(true)}
-                className="text-xs text-gray-400 hover:text-white underline mt-2"
+                onClick={() => {
+                  setShowQr(false);
+                  setErrorMsg('');
+                }}
+                className="text-xs text-gray-400 hover:text-white underline mt-3 flex items-center gap-1"
               >
-                Test Mode: Instant Free Credit
+                <ArrowLeft size={12} /> Back to Packages
               </button>
             </div>
           )}
