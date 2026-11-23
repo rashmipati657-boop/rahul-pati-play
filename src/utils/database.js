@@ -77,14 +77,14 @@ export function saveDatabase(db) {
   }
 }
 
-// Helper: Check if a game is permanently unlocked with multi-tier fallback
+// Helper: Check if a game is unlocked with multi-tier fallback
 export function isGameUnlocked(gameId, gameTitle, optionalDb = null) {
   if (!gameId && !gameTitle) return false;
   const db = optionalDb || loadDatabase();
   const list = db?.playerState?.unlockedGames || [];
 
   // 1. VIP Pass / All unlock
-  if (list.includes('all')) return true;
+  if (db?.playerState?.hasVipPass || list.includes('all')) return true;
 
   // 2. Direct ID check
   if (gameId && list.includes(gameId)) return true;
@@ -92,27 +92,69 @@ export function isGameUnlocked(gameId, gameTitle, optionalDb = null) {
   // 3. Title check
   if (gameTitle && list.includes(gameTitle)) return true;
 
-  // 4. Standalone per-game localStorage flags (resilient to schema rewrites)
+  // 4. Standalone per-game localStorage flags
   if (gameId && localStorage.getItem(`rpp_unlocked_${gameId}`) === 'true') return true;
   if (gameTitle && localStorage.getItem(`rpp_unlocked_${gameTitle}`) === 'true') return true;
-
-  // 5. Fallback list check
-  try {
-    const fallback = JSON.parse(localStorage.getItem('rpp_all_unlocked_games') || '[]');
-    if (Array.isArray(fallback)) {
-      if (gameId && fallback.includes(gameId)) return true;
-      if (gameTitle && fallback.includes(gameTitle)) return true;
-    }
-  } catch {}
 
   return false;
 }
 
-// Helper: Permanently unlock a game across all storage layers
-export function unlockGamePermanently(gameId, gameTitle = '') {
+// Helper: Consume a paid game play session on game exit (unless player holds permanent VIP Pass)
+export function consumeGameSession(gameId, gameTitle = '') {
+  const db = loadDatabase();
+  if (db?.playerState?.hasVipPass || db?.playerState?.unlockedGames?.includes('all')) {
+    // VIP pass holders keep games unlocked forever
+    return db;
+  }
+
+  if (db.playerState?.unlockedGames) {
+    db.playerState.unlockedGames = db.playerState.unlockedGames.filter(
+      (id) => id !== gameId && id !== gameTitle
+    );
+  }
+
+  if (gameId) localStorage.removeItem(`rpp_unlocked_${gameId}`);
+  if (gameTitle) localStorage.removeItem(`rpp_unlocked_${gameTitle}`);
+
+  try {
+    const fallback = JSON.parse(localStorage.getItem('rpp_all_unlocked_games') || '[]');
+    const filtered = fallback.filter((id) => id !== gameId && id !== gameTitle);
+    localStorage.setItem('rpp_all_unlocked_games', JSON.stringify(filtered));
+  } catch {}
+
+  saveDatabase(db);
+  return db;
+}
+
+// Reset all game unlocks (Owner Control & Anti-Bypass Testing)
+export function resetAllUnlockedGames() {
+  const db = loadDatabase();
+  if (db.playerState) {
+    db.playerState.unlockedGames = [];
+    db.playerState.hasVipPass = false;
+  }
+  localStorage.removeItem('rpp_all_unlocked_games');
+  Object.keys(localStorage).forEach((k) => {
+    if (k.startsWith('rpp_unlocked_')) {
+      localStorage.removeItem(k);
+    }
+  });
+  saveDatabase(db);
+  return db;
+}
+
+// Helper: Unlock a game for paid play
+export function unlockGamePermanently(gameId, gameTitle = '', isVip = false) {
   const db = loadDatabase();
   if (!db.playerState) db.playerState = {};
   if (!Array.isArray(db.playerState.unlockedGames)) db.playerState.unlockedGames = [];
+
+  if (isVip || gameId === 'all') {
+    db.playerState.hasVipPass = true;
+    if (!db.playerState.unlockedGames.includes('all')) {
+      db.playerState.unlockedGames.push('all');
+    }
+  }
 
   // Store both ID and Title
   if (gameId && !db.playerState.unlockedGames.includes(gameId)) {
@@ -218,5 +260,11 @@ export function wipeDatabase() {
   localStorage.removeItem(DB_KEY);
   localStorage.removeItem('unlocked_arcade_games');
   localStorage.removeItem('arcade_tokens');
+  localStorage.removeItem('rpp_all_unlocked_games');
+  Object.keys(localStorage).forEach((k) => {
+    if (k.startsWith('rpp_unlocked_')) {
+      localStorage.removeItem(k);
+    }
+  });
   saveDatabase(INITIAL_DATABASE);
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GAMES_CATALOG } from './config/fampayConfig';
 import { sounds } from './utils/audio';
-import { loadDatabase, saveDatabase, addWinCoins, isGameUnlocked, unlockGamePermanently } from './utils/database';
+import { loadDatabase, saveDatabase, addWinCoins, isGameUnlocked, unlockGamePermanently, consumeGameSession, resetAllUnlockedGames } from './utils/database';
 import confetti from 'canvas-confetti';
 
 // Games
@@ -110,15 +110,29 @@ export default function App() {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
+  // Safely exit game and consume single entry ticket (VIP passes remain permanently unlocked)
+  const handleExitGame = () => {
+    sounds.playClick();
+    if (activeGameId) {
+      const updatedDb = consumeGameSession(activeGameId);
+      setDb(updatedDb);
+    }
+    setActiveGameId(null);
+  };
+
   // Handle mobile / browser hardware back button
   useEffect(() => {
     const handlePopState = () => {
+      if (activeGameId) {
+        const updatedDb = consumeGameSession(activeGameId);
+        setDb(updatedDb);
+      }
       setActiveGameId(null);
       setPayingGame(null);
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [activeGameId]);
 
   // Push history state whenever a game launches so back button returns safely to arcade
   useEffect(() => {
@@ -203,10 +217,7 @@ export default function App() {
         {/* Game Top Navigation */}
         <div className="bg-[#101026] border-b border-gray-800 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
           <button
-            onClick={() => {
-              sounds.playClick();
-              setActiveGameId(null);
-            }}
+            onClick={handleExitGame}
             className="flex items-center gap-2 text-xs font-arcade text-gray-300 hover:text-neon-cyan transition-all bg-gray-800/80 hover:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-700"
           >
             <ArrowLeft size={16} /> BACK TO ARCADE
@@ -244,37 +255,37 @@ export default function App() {
         {/* Game Canvas Container */}
         <div className="flex-1 flex items-center justify-center p-2 sm:p-6">
           {activeGameId === 'cyber-racer' && (
-            <CyberRacer onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <CyberRacer onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
           {activeGameId === 'sticky-run' && (
-            <StickyRunner onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <StickyRunner onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
           {activeGameId === 'snakes-ladders' && (
-            <SnakesAndLadders onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <SnakesAndLadders onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
           {activeGameId === 'classic-snake' && (
-            <ClassicSnake onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <ClassicSnake onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
           {activeGameId === 'pong-1d' && (
-            <PongDuel onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <PongDuel onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
           {activeGameId === 'brick-breaker' && (
-            <BrickBreaker onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <BrickBreaker onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
           {activeGameId === 'space-invaders' && (
-            <SpaceInvaders onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <SpaceInvaders onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
           {activeGameId === 'flappy-stick' && (
-            <FlappyStick onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <FlappyStick onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
           {activeGameId === 'memory-match' && (
-            <MemoryMatch onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <MemoryMatch onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
           {activeGameId === 'minesweeper' && (
-            <Minesweeper onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <Minesweeper onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
           {activeGameId === 'tic-tac-toe' && (
-            <TicTacToe onExit={() => setActiveGameId(null)} onWinReward={handleWinReward} />
+            <TicTacToe onExit={handleExitGame} onWinReward={handleWinReward} />
           )}
         </div>
       </div>

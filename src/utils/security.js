@@ -13,7 +13,7 @@ export function validateUtr(utr) {
   const clean = utr.trim().replace(/\s+/g, '');
   // Valid NPCI UTR is exactly 12 numeric digits
   if (!/^\d{12}$/.test(clean)) {
-    return { valid: false, reason: 'UTR must be exactly 12 numeric digits from your FamPay payment receipt.' };
+    return { valid: false, reason: 'UTR must be exactly 12 numeric digits from your FamPay / UPI payment receipt.' };
   }
   // Check if all digits are identical (e.g. 000000000000, 111111111111, 777777777777, 999999999999)
   if (/^(.)\1{11}$/.test(clean)) {
@@ -23,10 +23,25 @@ export function validateUtr(utr) {
   const dummyNumbers = [
     '123456789012', '012345678901', '987654321098',
     '123412341234', '112233445566', '121212121212',
-    '111222333444', '000111222333'
+    '111222333444', '000111222333', '987654321000',
+    '000000000000', '999999999999', '123456123456',
+    '111122223333', '444455556666', '777788889999'
   ];
   if (dummyNumbers.includes(clean)) {
-    return { valid: false, reason: 'Test/Dummy UTR detected. Please enter the genuine 12-digit reference from your FamPay receipt.' };
+    return { valid: false, reason: 'Test/Dummy UTR detected. Please enter the genuine 12-digit reference from your FamPay / UPI receipt.' };
+  }
+
+  // NPCI RRN Banking Structure Validation:
+  // Genuine Indian UPI UTRs (RRN) begin with a valid year digit (4 for 2024, 5 for 2025, 6 for 2026)
+  // followed by Julian day (001 to 366).
+  const yearDigit = parseInt(clean[0], 10);
+  const julianDay = parseInt(clean.slice(1, 4), 10);
+
+  if (yearDigit < 4 || yearDigit > 6 || julianDay < 1 || julianDay > 366) {
+    return {
+      valid: false,
+      reason: 'Invalid NPCI Reference number format. Genuine PhonePe, Google Pay, FamPay, or Paytm receipts provide an active 12-digit banking UTR.',
+    };
   }
 
   // Check anti-leakage duplicate database
@@ -35,7 +50,7 @@ export function validateUtr(utr) {
     const prevDate = new Date(usedUtrs[clean].timestamp).toLocaleDateString();
     return {
       valid: false,
-      reason: `This UTR (${clean}) was already redeemed on ${prevDate}. Reusing payment receipts is blocked. Each ₹2 payment can only unlock once.`,
+      reason: `This UTR (${clean}) was already redeemed on ${prevDate}. Reusing payment receipts is strictly blocked. Each payment unlocks one session.`,
       duplicate: true,
     };
   }

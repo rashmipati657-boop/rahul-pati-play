@@ -251,7 +251,7 @@ export const SHOP_ITEMS = [
 export function generateUpiUrl(amountInr, gameTitle = 'Retro Arcade') {
   const cleanId = 'rashmipati@fam';
   const cleanName = encodeURIComponent('Rashmi Ranjan pati');
-  const cleanNote = encodeURIComponent((gameTitle || 'Retro Arcade').replace(/[^a-zA-Z0-9 ]/g, ' ').trim().slice(0, 20));
+  const cleanNote = encodeURIComponent((gameTitle || 'Retro Arcade').replace(/[^a-zA-Z0-9]/g, '').slice(0, 16) || 'RetroArcade');
   const txnRef = `RPP${Date.now().toString().slice(-8)}`;
   const formattedAmount = Number(amountInr || 2).toFixed(2);
 
@@ -263,16 +263,35 @@ export function generateUpiUrl(amountInr, gameTitle = 'Retro Arcade') {
 export function getAppUpiUrls(amountInr, gameTitle = 'Retro Arcade') {
   const cleanId = 'rashmipati@fam';
   const cleanName = encodeURIComponent('Rashmi Ranjan pati');
-  const cleanNote = encodeURIComponent((gameTitle || 'Retro Arcade').replace(/[^a-zA-Z0-9 ]/g, ' ').trim().slice(0, 20));
+  const cleanNote = encodeURIComponent((gameTitle || 'Retro Arcade').replace(/[^a-zA-Z0-9]/g, '').slice(0, 16) || 'RetroArcade');
   const txnRef = `RPP${Date.now().toString().slice(-8)}`;
   const formattedAmount = Number(amountInr || 2).toFixed(2);
   const baseParams = `pa=${cleanId}&pn=${cleanName}&am=${formattedAmount}&cu=INR&tn=${cleanNote}&tr=${txnRef}`;
 
+  const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+
   return {
-    phonepe: `phonepe://pay?${baseParams}`,
-    gpay: `gpay://upi/pay?${baseParams}`,
-    fampay: `fampay://pay?${baseParams}`,
-    paytm: `paytmmp://pay?${baseParams}`,
+    // PhonePe: Android Intent package launcher, fallback to custom scheme
+    phonepe: isAndroid
+      ? `intent://pay?${baseParams}#Intent;scheme=upi;package=com.phonepe.app;end`
+      : `phonepe://pay?${baseParams}`,
+
+    // Google Pay: Android Intent package launcher for GPay India, fallback to Tez scheme
+    gpay: isAndroid
+      ? `intent://pay?${baseParams}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`
+      : `tez://upi/pay?${baseParams}`,
+
+    // FamPay: Android Intent package launcher for FamPay India, fallback to custom scheme
+    fampay: isAndroid
+      ? `intent://pay?${baseParams}#Intent;scheme=upi;package=com.fampay.in;end`
+      : `fampay://pay?${baseParams}`,
+
+    // Paytm: Android Intent package launcher for Paytm, fallback to paytmmp
+    paytm: isAndroid
+      ? `intent://pay?${baseParams}#Intent;scheme=upi;package=net.one97.paytm;end`
+      : `paytmmp://pay?${baseParams}`,
+
+    // Razorpay & Universal NPCI Intent: invokes system UPI chooser with all installed apps
     razorpay: `upi://pay?${baseParams}`,
     universal: `upi://pay?${baseParams}`,
   };

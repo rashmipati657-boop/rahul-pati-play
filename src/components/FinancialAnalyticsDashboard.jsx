@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { loadDatabase } from '../utils/database';
+import { loadDatabase, resetAllUnlockedGames } from '../utils/database';
 import { getUsedUtrs, getSecurityLogs } from '../utils/security';
 import { sounds } from '../utils/audio';
 import {
@@ -447,13 +447,28 @@ export default function FinancialAnalyticsDashboard({ onClose, onLogout }) {
 
         {/* Footer */}
         <div className="bg-[#090914] p-3.5 border-t border-gray-800 flex items-center justify-between text-xs text-gray-400">
-          <span>Accountant Engine: Real-Time Sync Active</span>
           <button
-            onClick={onClose}
-            className="px-4 py-1.5 bg-neon-cyan text-black font-arcade text-xs font-bold rounded-lg hover:brightness-110"
+            onClick={() => {
+              if (window.confirm('Reset all game unlocks? All 11 games will be locked again so you can test payment.')) {
+                resetAllUnlockedGames();
+                sounds.playWin();
+                alert('All game unlocks have been reset! All games are now strictly locked and require payment.');
+                window.location.reload();
+              }
+            }}
+            className="px-3 py-1.5 bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 font-mono text-[11px] rounded-lg transition-colors flex items-center gap-1.5"
           >
-            CLOSE
+            🔄 Reset Unlocks (Test Mode)
           </button>
+          <div className="flex items-center gap-3">
+            <span className="hidden sm:inline">Accountant Engine: Real-Time Sync Active</span>
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 bg-neon-cyan text-black font-arcade text-xs font-bold rounded-lg hover:brightness-110"
+            >
+              CLOSE
+            </button>
+          </div>
         </div>
       </div>
     </div>

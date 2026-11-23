@@ -35,13 +35,6 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
     return `${os} (${browser})`;
   };
 
-  // If game is already permanently unlocked, instantly launch and close modal
-  useEffect(() => {
-    if (isGameUnlocked(game.id, game.title)) {
-      onSuccess(game.id, amountInr);
-    }
-  }, [game.id, game.title]);
-
   const copyUpiId = () => {
     navigator.clipboard.writeText('rashmipati@fam');
     setCopied(true);
@@ -344,16 +337,16 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
                     </span>
                   </button>
 
-                  {/* Manual QR Scan Button */}
+                  {/* Scanner Verification Link for Multi-Device Users */}
                   <button
                     onClick={() => {
                       sounds.playClick();
-                      setSelectedApp('QR Scanner');
+                      setSelectedApp('FamPay QR Scanner');
                       setHasClickedPay(true);
                     }}
-                    className="w-full py-2 bg-gray-800/80 hover:bg-gray-800 border border-gray-700 text-gray-300 text-[11px] font-arcade rounded-xl flex items-center justify-center gap-1.5 transition-all mt-1"
+                    className="w-full py-2 text-gray-400 hover:text-neon-cyan text-[11px] font-mono flex items-center justify-center gap-1.5 transition-colors mt-1"
                   >
-                    <QrCode size={13} className="text-neon-cyan" /> I SCANNED QR CODE TO PAY
+                    <QrCode size={13} /> Scanned QR code with mobile camera? Click here to enter UTR
                   </button>
                 </div>
               ) : (
@@ -365,7 +358,7 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
                     </div>
                     <p className="text-[11px] text-gray-300 leading-relaxed">
                       Completed ₹{amountInr} in <strong className="text-neon-cyan font-bold">{selectedApp || 'your UPI app'}</strong> to <strong className="text-neon-green font-mono">rashmipati@fam</strong>? 
-                      Enter your receipt's <strong className="text-neon-yellow">12-digit UPI Reference No. (UTR)</strong> below to verify and unlock:
+                      Enter your receipt's <strong className="text-neon-yellow">12-digit UPI Reference No. (UTR)</strong> below to verify and start playing:
                     </p>
                   </div>
 
