@@ -60,13 +60,17 @@ export default function PaymentModal({ game, onClose, onSuccess }) {
     const targetUrl = urls[appName] || urls.universal;
 
     // Fix for "Request type is not supported":
-    // Never use target="_blank". In mobile browsers (Android Chrome / iOS Safari),
-    // same-window navigation forwards the genuine user activation token to the target app.
-    try {
-      window.location.href = targetUrl;
-    } catch (err) {
-      console.warn('Direct app launcher fallback to universal UPI', err);
-      window.location.href = urls.universal;
+    // 1. Mobile Browsers: same-window navigation forwards genuine intent tokens without popup blocking.
+    // 2. Desktop Browsers: custom schemes (e.g. phonepe://) don't exist on PC, so we keep the user on-page
+    //    and reveal Step 2 with the FamPay QR scanner ready to scan with their phone.
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+      try {
+        window.location.href = targetUrl;
+      } catch (err) {
+        console.warn('Direct app launcher fallback to universal UPI', err);
+        window.location.href = urls.universal;
+      }
     }
   };
 

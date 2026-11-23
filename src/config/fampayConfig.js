@@ -255,8 +255,8 @@ export function generateUpiUrl(amountInr, gameTitle = 'Retro Arcade') {
   const txnRef = `RPP${Date.now().toString().slice(-8)}`;
   const formattedAmount = Number(amountInr || 2).toFixed(2);
 
-  // Full NPCI compliant query string with tr and tn to prevent "request type not supported" errors
-  return `upi://pay?pa=${cleanId}&pn=${cleanName}&am=${formattedAmount}&cu=INR&tn=${cleanNote}&tr=${txnRef}&mode=02&purpose=00`;
+  // Pure NPCI P2P specification (no mc or mode=02) to guarantee zero "request type not supported" errors across all banks
+  return `upi://pay?pa=${cleanId}&pn=${cleanName}&am=${formattedAmount}&cu=INR&tn=${cleanNote}&tr=${txnRef}`;
 }
 
 // Dedicated App Launchers for PhonePe, Google Pay, FamPay, Paytm, and Razorpay
@@ -273,7 +273,7 @@ export function getAppUpiUrls(amountInr, gameTitle = 'Retro Arcade') {
     gpay: `gpay://upi/pay?${baseParams}`,
     fampay: `fampay://pay?${baseParams}`,
     paytm: `paytmmp://pay?${baseParams}`,
-    razorpay: `upi://pay?${baseParams}&mc=0000`,
-    universal: `upi://pay?${baseParams}&mode=02&purpose=00`,
+    razorpay: `upi://pay?${baseParams}`,
+    universal: `upi://pay?${baseParams}`,
   };
 }

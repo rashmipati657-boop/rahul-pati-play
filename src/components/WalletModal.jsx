@@ -26,11 +26,14 @@ export default function WalletModal({ tokens, onClose, onRechargeSuccess, onUnlo
     const urls = getAppUpiUrls(selectedPack.amount, selectedPack.label);
     const targetUrl = urls[appName] || urls.universal;
 
-    try {
-      window.location.href = targetUrl;
-    } catch (err) {
-      console.warn('App launch error', err);
-      window.location.href = urls.universal;
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+      try {
+        window.location.href = targetUrl;
+      } catch (err) {
+        console.warn('App launch error', err);
+        window.location.href = urls.universal;
+      }
     }
   };
 
